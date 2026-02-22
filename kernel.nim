@@ -262,7 +262,7 @@ proc nameToCStr(name: array[FS_NAME_LEN, char]): cstring =
 
 proc FSList(path: cstring): ptr FSDirSlot =
   ## Return pointer to the dir slot for path, or nil if not found.
-  for i in 0..<FS_MAX_DIRS:
+  for i in 0 ..< FS_MAX_DIRS:
     if FSDirectoryTable[i].used and nameEq(FSDirectoryTable[i].path, path):
       return addr FSDirectoryTable[i]
   return nil
@@ -282,16 +282,107 @@ proc FSInit() =
   FSDirectoryTable[0].entries[1].ftype = FSObjectFile
   FSDirectoryTable[0].entries[1].size  = 1234
 
+# ---- size formatting helpers ----
+
+type
+  FSSizeUnit = enum
+    fsuB, fsuKB, fsuMB, fsuGB
+
+proc intToStr(v: int, buf: var array[32, char], start: int): int =
+  var n = v
+  if n == 0:
+    buf[start] = '0'
+    return start + 1
+
+  var tmp {.noinit.}: array[16, char]
+  var len = 0
+  while n > 0 and len < tmp.len:
+    tmp[len] = char(ord('0') + (n mod 10))
+    n = n div 10
+    len += 1
+
+  var pos = start
+  for i in countdown(len - 1, 0):
+    buf[pos] = tmp[i]
+    pos += 1
+  return pos
+
+proc appendCStr(buf: var array[32, char], pos: int, s: cstring): int =
+  var i = 0
+  var p = pos
+  while s[i] != '\0' and p < buf.len - 1:
+    buf[p] = s[i]
+    p += 1
+    i += 1
+  buf[p] = '\0'
+  return p
+
+proc formatSize(size: int, buf: var array[32, char]) =
+  ## Format size as B/KB/MB/GB into buf, bumping >1000 to next unit (except GB).
+  const KB = 1000
+  const MB = 1000 * KB
+  const GB = 1000 * MB
+
+  var n: int
+  var unit: FSSizeUnit
+
+  if size >= GB:
+    n = size div GB
+    unit = fsuGB
+  elif size >= MB:
+    n = size div MB
+    unit = fsuMB
+  elif size >= KB:
+    n = size div KB
+    unit = fsuKB
+  else:
+    n = size
+    unit = fsuB
+
+  if unit == fsuB and n >= 1000:
+    n = n div KB
+    unit = fsuKB
+  elif unit == fsuKB and n >= 1000:
+    n = n div KB
+    unit = fsuMB
+  elif unit == fsuMB and n >= 1000:
+    n = n div KB
+    unit = fsuGB
+
+  let p = intToStr(n, buf, 0)
+
+  let unitStr: cstring =
+    case unit
+    of fsuB:  " B"
+    of fsuKB: " KB"
+    of fsuMB: " MB"
+    of fsuGB: " GB"
+
+  discard appendCStr(buf, p, unitStr)
+
+const FS_SIZE_COL = 20 + 20 * FONT_WIDTH
+
 proc cmdLs(path: cstring) =
-  ## Very simple 'ls': list names in the given directory.
+  ## Very simple 'ls': list names and sizes in the given directory.
   let slot = FSList(path)
   if slot == nil:
     writeString(20, curY, "ls: no such directory", 0xFFFF4444'u32, BG)
     curY += FONT_HEIGHT
     return
+
+  var sizeBuf {.noinit.}: array[32, char]
   var idx = 0
   while idx < slot.count:
-    writeString(20, curY, cast[cstring](unsafeAddr slot.entries[idx].name[0]), FG_INPUT, BG)
+    writeString(20, curY,
+                cast[cstring](unsafeAddr slot.entries[idx].name[0]),
+                FG_INPUT, BG)
+    formatSize(slot.entries[idx].size, sizeBuf)
+    let color =
+      (if slot.entries[idx].ftype == FSObjectDir: 0xFF88CCFF'u32
+       else: 0xFF88FF88'u32)
+    writeString(FS_SIZE_COL, curY,
+                cast[cstring](addr sizeBuf[0]),
+                color, BG)
     curY += FONT_HEIGHT
     idx += 1
 
