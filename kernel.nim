@@ -1,6 +1,8 @@
 # nimos - Minimal Nim OS Kernel for x86_64
 # Freestanding kernel with Limine bootloader support
 
+import VFS
+
 # Disable standard library and enable bare metal mode
 {.pragma: nimkernel, noconv, exportc, codegenDecl: "$# $#$#".}
 {.push stackTrace: off, profiler: off.}

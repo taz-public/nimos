@@ -67,6 +67,7 @@ $(KERNEL): kernel.nim start.S linker.ld | $(BUILD_DIR)
 	$(LD) $(LD_FLAGS) -o $(KERNEL) \
 		$(BUILD_DIR)/start.o \
 		$(BUILD_DIR)/nimcache/@psystem.nim.c.o \
+		$(BUILD_DIR)/nimcache/@mVFS.nim.c.o \
 		$(BUILD_DIR)/nimcache/@mkernel.nim.c.o
 
 	# Verify ELF
