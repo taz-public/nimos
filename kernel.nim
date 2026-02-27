@@ -2,6 +2,7 @@
 # Freestanding kernel with Limine bootloader support
 
 import VFS
+import DiskFS
 
 # Disable standard library and enable bare metal mode
 {.pragma: nimkernel, noconv, exportc, codegenDecl: "$# $#$#".}
@@ -365,23 +366,20 @@ proc formatSize(size: int, buf: var array[32, char]) =
 const FS_SIZE_COL = 20 + 20 * FONT_WIDTH
 
 proc cmdLs(path: cstring) =
-  ## Very simple 'ls': list names and sizes in the given directory.
-  let slot = FSList(path)
-  if slot == nil:
-    writeString(20, curY, "ls: no such directory", 0xFFFF4444'u32, BG)
+  ## List directory via DiskFS.
+  let list = DiskFSListRoot()
+  var sizeBuf {.noinit.}: array[32, char]
+  if list.count == 0:
+    writeString(20, curY, "(disk not ready)", 0xFF888888'u32, BG)
     curY += FONT_HEIGHT
     return
-
-  var sizeBuf {.noinit.}: array[32, char]
   var idx = 0
-  while idx < slot.count:
-    writeString(20, curY,
-                cast[cstring](unsafeAddr slot.entries[idx].name[0]),
-                FG_INPUT, BG)
-    formatSize(slot.entries[idx].size, sizeBuf)
+  while idx < list.count:
+    let ep = unsafeAddr list.entries[idx]
+    writeString(20, curY, cast[cstring](unsafeAddr ep.Name[0]), FG_INPUT, BG)
+    formatSize(int(ep.Size), sizeBuf)
     let color =
-      (if slot.entries[idx].ftype == FSObjectDir: 0xFF88CCFF'u32
-       else: 0xFF88FF88'u32)
+      (if ep.FSType == FS_FILE: 0xFF88FF88'u32 else: 0xFF88CCFF'u32)
     writeString(FS_SIZE_COL, curY,
                 cast[cstring](addr sizeBuf[0]),
                 color, BG)
@@ -758,7 +756,10 @@ proc targetA() =
   # Prompt
   writeString(20, 60, PROMPT, 0xFFFFFFFF'u32, 0xFF001030'u32)
 
-  # Initialise filesystem
+  # Initialise disk filesystem
+  DiskFSInit()
+
+  # Initialise in-memory filesystem
   FSInit()
 
   # Set up interrupts and enable keyboard

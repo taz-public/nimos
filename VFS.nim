@@ -8,7 +8,7 @@ type
 
   FSObject* = object
     FSType*: FSObjectType
-    Name*: string
+    Name*: array[64, char]
     Parent*: ptr FSObject      ## Parent in the tree, or nil for root.
     Size*: uint64              ## Bytes for files, optional for dirs.
     Impl*: pointer             ## Filesystem-specific data (inode, node, etc.)
@@ -31,7 +31,7 @@ proc FSFileOpen*(Obj: ptr FSObject): FSFileHandle =
     raise newException(IOError, "FSFileOpen: Obj is nil")
 
   if Obj.FSType != FS_FILE:
-    raise newException(IOError, "FSFileOpen: not a file: " & Obj.Name)
+    raise newException(IOError, "FSFileOpen: not a file")
 
   result.Object = Obj
   result.Position = 0
@@ -87,7 +87,7 @@ proc FSDirectoryOpen*(Obj: ptr FSObject): FSDirectoryHandle =
     raise newException(IOError, "FSDirectoryOpen: Obj is nil")
 
   if Obj.FSType != FS_DIRECTORY:
-    raise newException(IOError, "FSDirectoryOpen: not a directory: " & Obj.Name)
+    raise newException(IOError, "FSDirectoryOpen: not a directory")
 
   result.Object = Obj
   result.Index = 0
@@ -271,3 +271,10 @@ proc vfsStat*(path: string, st: var VfsStat): VfsResult =
   if m == nil: return vfsErrNotFound
   if m.fsOps.stat == nil: return vfsErrInval
   result = m.fsOps.stat(path.cstring, st)
+
+# --- FSList: path -> seq[FSObject] routing --------------------------------
+# DiskFS imports VFS, so VFS cannot import DiskFS (would be circular).
+# The kernel wires the actual implementation after mounting via vfsFSListImpl.
+
+# FSList routing is handled at the kernel level (see cmdLs in kernel.nim).
+# DiskFS imports VFS, so VFS cannot import DiskFS without a circular dependency.
